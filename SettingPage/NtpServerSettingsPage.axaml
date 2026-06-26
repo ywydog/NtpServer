@@ -56,7 +56,9 @@
                             <controls:SettingsExpanderItem Content="{Binding Value}"
                                                            Description="ClassIsland 精确时间服务器地址">
                                 <controls:SettingsExpanderItem.Footer>
-                                    <Button Content="复制"
+                                    <Button Theme="{StaticResource TransparentButton}"
+                                            Content="{ci:FluentIcon &#xE8C8;}"
+                                            ToolTip.Tip="复制到剪贴板"
                                             Click="ButtonCopyAddress_OnClick"
                                             Tag="{Binding Value}" />
                                 </controls:SettingsExpanderItem.Footer>

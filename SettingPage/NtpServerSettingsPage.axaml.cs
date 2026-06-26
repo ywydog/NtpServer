@@ -150,6 +150,7 @@ public partial class NtpServerSettingsPage : SettingsPageBase
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "[NtpServer] 复制到剪贴板失败: {Message}", ex.Message);
+                this.ShowErrorToast("复制到剪贴板失败", ex);
             }
         }
     }
