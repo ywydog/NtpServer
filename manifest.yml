@@ -4,7 +4,7 @@ description: 在本classisland启动NTP服务端，为局域网设备提供时�
 entranceAssembly: "NtpServer.dll"
 url: https://github.com/ywydog/NtpServer
 version: 1.0.0.0
-apiVersion: 2.0.0.1
+apiVersion: 2.0.0.0
 author: ywydog
 icon: icon.png
 readme: readme.md
