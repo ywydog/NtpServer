@@ -91,7 +91,7 @@
                     <controls:SettingsExpanderItem.Footer>
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBox Text="{Binding ViewModel.Settings.TargetIp, Mode=TwoWay}"
-                                     PlaceholderText="如 192.168.1.5"
+                                     Watermark="如 192.168.1.5"
                                      Width="160" />
                             <NumericUpDown Value="{Binding ViewModel.Settings.Port, Mode=TwoWay}"
                                            Minimum="1024"
