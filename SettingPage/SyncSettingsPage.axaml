@@ -33,7 +33,7 @@
             <controls:SettingsExpander IconSource="{ci:FluentIconSource &#xE72E;}"
                                        Header="设备发现"
                                        IsExpanded="True"
-                                       Description="订阅组播 239.255.42.42，列出本局域网中所有"时间发布"端。">
+                                       Description="订阅组播 239.255.42.42，列出本局域网中所有「时间发布」端。">
                 <controls:SettingsExpanderItem Content="发现状态"
                                                Description="{Binding ViewModel.StatusText}">
                     <controls:SettingsExpanderItem.Footer>
