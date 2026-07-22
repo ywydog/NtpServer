@@ -74,7 +74,7 @@ public partial class NtpServerSettingsViewModel : ObservableObject
         if (IsServiceRunning != running) IsServiceRunning = running;
 
         var count = Service.RequestCount;
-        if (_requestCount != count) OnPropertyChanged(nameof(RequestCount));
+        if (RequestCount != count) OnPropertyChanged(nameof(RequestCount));
 
         var err = Service.LastError;
         if (LastError != err) LastError = err;
