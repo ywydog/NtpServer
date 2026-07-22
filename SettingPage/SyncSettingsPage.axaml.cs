@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
+using ClassIsland.Core.Enums.SettingsWindow;
 using ClassIsland.Core.Helpers.UI;
 using Microsoft.Extensions.Logging;
 using NtpServer.Models;
@@ -11,7 +12,7 @@ using NtpServer.ViewModels;
 namespace NtpServer;
 
 /// <summary>同步页：从目标设备拉取时间并应用。</summary>
-[SettingsPageInfo("classisland.ntpServer.sync", "时间同步", "\uE71B")]
+[SettingsPageInfo("classisland.ntpServer.sync", "时间同步", "\uE71B", "\uE71B", SettingsPageCategory.External)]
 public partial class SyncSettingsPage : SettingsPageBase
 {
     private readonly ILogger<SyncSettingsPage>? _logger;

@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
+using ClassIsland.Core.Enums.SettingsWindow;
 using ClassIsland.Core.Helpers.UI;
 using Microsoft.Extensions.Logging;
 using NtpServer.ViewModels;
@@ -10,7 +11,7 @@ using NtpServer.ViewModels;
 namespace NtpServer;
 
 /// <summary>发布页：把本机时间作为时间源发布到局域网。</summary>
-[SettingsPageInfo("classisland.ntpServer.publish", "时间发布", "\uE724")]
+[SettingsPageInfo("classisland.ntpServer.publish", "时间发布", "\uE724", "\uE724", SettingsPageCategory.External)]
 public partial class PublishSettingsPage : SettingsPageBase
 {
     private readonly ILogger<PublishSettingsPage>? _logger;
