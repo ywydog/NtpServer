@@ -1,9 +1,9 @@
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text.Json.Serialization;
 using ClassIsland.Shared;
 using Microsoft.Extensions.Logging;
+using NtpServer.Helpers;
 using NtpServer.Models;
 
 namespace NtpServer.Services;
@@ -281,26 +281,5 @@ public class NtpServerService : IDisposable
         buffer[offset + 7] = (byte)timestamp;
     }
 
-    public List<string> GetLocalIpAddresses()
-    {
-        try
-        {
-            return NetworkInterface.GetAllNetworkInterfaces()
-                .Where(ni => ni.OperationalStatus == OperationalStatus.Up
-                             && ni.NetworkInterfaceType != NetworkInterfaceType.Loopback
-                             && ni.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
-                .SelectMany(ni => ni.GetIPProperties().UnicastAddresses)
-                .Where(addr => addr.Address.AddressFamily == AddressFamily.InterNetwork
-                               && !IPAddress.IsLoopback(addr.Address)
-                               && !addr.Address.ToString().StartsWith("169.254.", StringComparison.Ordinal))
-                .Select(addr => addr.Address.ToString())
-                .Distinct()
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[NtpServer] 获取本机 IP 地址失败: {Message}", ex.Message);
-            return [];
-        }
-    }
+    public List<string> GetLocalIpAddresses() => LocalIpsHelper.GetLocalIpv4Addresses().ToList();
 }

@@ -6,7 +6,6 @@ using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Helpers.UI;
 using Microsoft.Extensions.Logging;
-using NtpServer.Services;
 using NtpServer.ViewModels;
 
 namespace NtpServer;
@@ -18,18 +17,15 @@ namespace NtpServer;
 public partial class NtpServerSettingsPage : SettingsPageBase
 {
     private readonly ILogger<NtpServerSettingsPage>? _logger;
-    private readonly NtpServerSettingsStore _store;
     private readonly DispatcherTimer _refreshTimer;
 
     public NtpServerSettingsViewModel ViewModel { get; }
 
     public NtpServerSettingsPage(
         NtpServerSettingsViewModel viewModel,
-        NtpServerSettingsStore store,
         ILogger<NtpServerSettingsPage>? logger = null)
     {
         ViewModel = viewModel;
-        _store = store;
         _logger = logger;
 
         DataContext = this;
@@ -88,15 +84,7 @@ public partial class NtpServerSettingsPage : SettingsPageBase
 
     private void ButtonRestartService_OnClick(object? sender, RoutedEventArgs e)
     {
-        try
-        {
-            _store.Save(ViewModel.Settings);
-        }
-        catch (Exception ex)
-        {
-            this.ShowErrorToast("保存设置失败", ex);
-            return;
-        }
+        // 设置会在 PropertyChanged 后由 Plugin 注册的自动保存服务写盘
         ViewModel.Service.Restart();
         ViewModel.AcknowledgePortChange();
         ViewModel.RefreshStatus();

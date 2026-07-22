@@ -7,9 +7,17 @@ using NtpServer.Models;
 namespace NtpServer.Services;
 
 /// <summary>
-/// NTP 插件设置的加载与保存。
-/// 文件位置：在进程基础目录下 <c>Plugins/NtpServer/NtpServerSettings.json</c>。
-/// 失败时返回默认实例并记录日志，绝不静默吞掉异常。
+/// 插件所有设置的容器。序列化到单个 JSON 文件中平铺保存。
+/// </summary>
+public class NtpServerSettingsRoot
+{
+    public NtpServerSettings NtpServer { get; set; } = new();
+    public PublishSettings Publish { get; set; } = new();
+    public SyncSettings Sync { get; set; } = new();
+}
+
+/// <summary>
+/// 设置加载与保存（统一）。
 /// </summary>
 public class NtpServerSettingsStore
 {
@@ -26,33 +34,32 @@ public class NtpServerSettingsStore
         _logger = logger;
     }
 
-    /// <summary>设置文件的绝对路径（不保证存在）。</summary>
     public string SettingsFilePath { get; } = Path.Combine(
         AppContext.BaseDirectory, "Plugins", "NtpServer", "NtpServerSettings.json");
 
-    public NtpServerSettings Load()
+    public NtpServerSettingsRoot Load()
     {
         try
         {
-            if (!File.Exists(SettingsFilePath)) return new NtpServerSettings();
+            if (!File.Exists(SettingsFilePath)) return new NtpServerSettingsRoot();
             var json = File.ReadAllText(SettingsFilePath);
-            var settings = JsonSerializer.Deserialize<NtpServerSettings>(json, JsonOptions);
-            return settings ?? new NtpServerSettings();
+            return JsonSerializer.Deserialize<NtpServerSettingsRoot>(json, JsonOptions)
+                   ?? new NtpServerSettingsRoot();
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "[NtpServer] 加载设置失败: {Message}", ex.Message);
-            return new NtpServerSettings();
+            return new NtpServerSettingsRoot();
         }
     }
 
-    public void Save(NtpServerSettings settings)
+    public void Save(NtpServerSettingsRoot root)
     {
         try
         {
             var dir = Path.GetDirectoryName(SettingsFilePath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(SettingsFilePath, JsonSerializer.Serialize(settings, JsonOptions));
+            File.WriteAllText(SettingsFilePath, JsonSerializer.Serialize(root, JsonOptions));
             _logger?.LogInformation("[NtpServer] 设置已保存到 {Path}", SettingsFilePath);
         }
         catch (Exception ex)
