@@ -17,7 +17,7 @@
             <controls:InfoBar Severity="Informational"
                               IsClosable="False"
                               IsOpen="{Binding !ViewModel.IsServiceRunning}"
-                              Message="在下方调整端口后启动 NTP 服务，然后将显示的地址填入其他 ClassIsland 端的「精确时间」设置即可同步本机时间。" />
+                              Message="在下方调整端口后启动 NTP 服务。然后将显示的地址复制到其他 ClassIsland 端「精确时间」中的「时间服务器」框中（注意：只填纯 IP 或主机名，不要带 http:// 和端口）。" />
 
             <!-- 管理员权限警告 -->
             <controls:InfoBar Severity="Error"
@@ -48,7 +48,7 @@
                                        Header="本机 IP 地址"
                                        IsExpanded="False"
                                        IsVisible="{Binding ViewModel.IsServiceRunning}"
-                                       Description="将以下地址填入其他 ClassIsland 端的「精确时间」设置">
+                                       Description="点击右侧复制按钮后，粘贴到其他 ClassIsland 端「精确时间」中的「时间服务器」框（只能填纯 IP 或主机名）">
 
                 <!-- 推荐地址（教师最常复制的那一个） -->
                 <controls:SettingsExpanderItem Content="推荐地址"
@@ -59,7 +59,7 @@
                             <TextBlock Text="{Binding ViewModel.PrimaryAddress}" VerticalAlignment="Center" />
                             <Button Theme="{StaticResource TransparentButton}"
                                     Content="{ci:FluentIcon &#xE8C8;}"
-                                    ToolTip.Tip="复制推荐地址"
+                                    ToolTip.Tip="复制纯 IP（不要带 http:// 和端口）"
                                     Click="ButtonCopyPrimaryAddress_OnClick"
                                     CommandParameter="{Binding ViewModel.PrimaryAddress}" />
                         </StackPanel>
@@ -85,7 +85,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <controls:SettingsExpanderItem Content="{Binding Value}"
-                                                           Description="ClassIsland 精确时间服务器地址">
+                                                           Description="可粘贴到 ClassIsland「时间服务器」框">
                                 <controls:SettingsExpanderItem.Footer>
                                     <Button Theme="{StaticResource TransparentButton}"
                                             Content="{ci:FluentIcon &#xE8C8;}"

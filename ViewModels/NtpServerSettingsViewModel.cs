@@ -86,9 +86,11 @@ public partial class NtpServerSettingsViewModel : ObservableObject
         SetIfChanged(ref _portWarningMessage, msg, nameof(PortWarningMessage));
         SetIfChanged(ref _portWarningSeverity, sev, nameof(PortWarningSeverity));
 
-        // 地址列表：只在内容变化时整体替换（避免每 2s 重建）
+        // 地址列表：ClassIsland 客户端用 GuerrillaNtp.NtpClient(string host, ...) 解析，
+        // 任何冒号（端口或 scheme）都会导致 IPAddress.Parse 失败。
+        // 因此只输出纯 IP / 主机名（无 http://、无端口）。
         var newAddrs = Service.GetLocalIpAddresses()
-            .Select(ip => new AddressItem($"http://{ip}"))
+            .Select(ip => new AddressItem(ip))
             .ToList();
         SyncAddressList(newAddrs);
         SetIfChanged(ref _primaryAddress, ClassIslandAddresses.FirstOrDefault()?.Value, nameof(PrimaryAddress));
@@ -144,13 +146,18 @@ public partial class NtpServerSettingsViewModel : ObservableObject
         if (port == 123 && !isAdmin)
         {
             return ("当前使用标准 NTP 端口 123，但 ClassIsland 未以管理员身份运行，无法绑定。" +
-                    "请以管理员身份重启 ClassIsland，或改为非特权端口。", InfoBarSeverity.Error);
+                    "请以管理员身份重启 ClassIsland，或改为非特权端口。" +
+                    "注意：改为非特权端口后，ClassIsland 客户端会忽略地址中的端口（始终向 123 发送），" +
+                    "因此只有使用标准端口 123 + 管理员身份，才能让其他 ClassIsland 端连进来。",
+                    InfoBarSeverity.Error);
         }
 
         if (isNonStandard)
         {
+            // ClassIsland 客户端调用 NtpClient(host) 时端口硬编码为 123，
+            // 即使用户在「时间服务器」框中带 :1234 也会被忽略，因此非标准端口根本不可达。
             return ($"当前端口 {port} 不是标准 NTP 端口（123）。" +
-                    "ClassIsland 客户端「精确时间」设置只接受标准端口，" +
+                    "ClassIsland 客户端会忽略地址中的端口（始终使用 123），" +
                     "其他 ClassIsland 端将无法连接到此 NTP 服务。", InfoBarSeverity.Warning);
         }
 
