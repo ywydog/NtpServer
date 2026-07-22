@@ -66,39 +66,39 @@ public partial class NtpServerSettingsViewModel : ObservableObject
     /// </summary>
     public void RefreshStatus()
     {
+        // 直接通过生成的属性赋值（避免 MVVMTK0034 直接 ref 字段）
         var admin = AdminHelper.IsRunningInAdmin();
-        SetIfChanged(ref _isRunningAsAdmin, admin, nameof(IsRunningAsAdmin));
+        if (IsRunningAsAdmin != admin) IsRunningAsAdmin = admin;
 
         var running = Service.IsRunning;
-        SetIfChanged(ref _isServiceRunning, running, nameof(IsServiceRunning));
+        if (IsServiceRunning != running) IsServiceRunning = running;
 
         var count = Service.RequestCount;
         if (_requestCount != count) OnPropertyChanged(nameof(RequestCount));
 
         var err = Service.LastError;
-        SetIfChanged(ref _lastError, err, nameof(LastError));
+        if (LastError != err) LastError = err;
 
         var nonStd = Settings.Port != 123;
-        SetIfChanged(ref _isNonStandardPort, nonStd, nameof(IsNonStandardPort));
+        if (IsNonStandardPort != nonStd) IsNonStandardPort = nonStd;
 
         // 端口警告：始终计算，便于 UI 实时反映状态
         var (msg, sev) = BuildPortWarning(Settings.Port, nonStd, admin, running, err);
-        SetIfChanged(ref _portWarningMessage, msg, nameof(PortWarningMessage));
-        SetIfChanged(ref _portWarningSeverity, sev, nameof(PortWarningSeverity));
+        if (PortWarningMessage != msg) PortWarningMessage = msg;
+        if (PortWarningSeverity != sev) PortWarningSeverity = sev;
 
-        // 地址列表：ClassIsland 客户端用 GuerrillaNtp.NtpClient(string host, ...) 解析，
-        // 任何冒号（端口或 scheme）都会导致 IPAddress.Parse 失败。
-        // 因此只输出纯 IP / 主机名（无 http://、无端口）。
+        // 地址列表
         var newAddrs = Service.GetLocalIpAddresses()
             .Select(ip => new AddressItem(ip))
             .ToList();
         SyncAddressList(newAddrs);
-        SetIfChanged(ref _primaryAddress, ClassIslandAddresses.FirstOrDefault()?.Value, nameof(PrimaryAddress));
+        var primary = ClassIslandAddresses.FirstOrDefault()?.Value;
+        if (PrimaryAddress != primary) PrimaryAddress = primary;
 
         var newStatus = running
             ? $"NTP 服务正在运行，端口: {Service.Port}"
             : (!string.IsNullOrEmpty(err) ? $"NTP 服务启动失败: {err}" : "NTP 服务未运行");
-        SetIfChanged(ref _statusText, newStatus, nameof(StatusText));
+        if (StatusText != newStatus) StatusText = newStatus;
     }
 
     /// <summary>
@@ -119,13 +119,6 @@ public partial class NtpServerSettingsViewModel : ObservableObject
         }
         ClassIslandAddresses.Clear();
         foreach (var item in newItems) ClassIslandAddresses.Add(item);
-    }
-
-    private void SetIfChanged<T>(ref T field, T value, string propertyName)
-    {
-        if (EqualityComparer<T>.Default.Equals(field, value)) return;
-        field = value;
-        OnPropertyChanged(propertyName);
     }
 
     private static (string Message, InfoBarSeverity Severity) BuildPortWarning(

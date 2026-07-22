@@ -40,13 +40,13 @@ public partial class SyncSettingsViewModel : ObservableObject
         _timeProvider = timeProvider;
         _ciTimeServiceAccessor = ciTimeServiceAccessor;
         _logger = logger;
-
-        _client.Discovered.CollectionChanged += OnDiscoveredChanged;
     }
 
-    private void OnDiscoveredChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    public void Refresh()
     {
-        // 简单整表刷新（设备数少，可接受）
+        IsDiscoveryRunning = _client.IsDiscoveryRunning;
+        _client.PruneStale();
+        // 设备数少时整表刷新足够（ListBox 自动响应 ObservableCollection 变化）
         DiscoveredDevices.Clear();
         foreach (var kv in _client.Discovered.OrderByDescending(d => d.Value.LastSeen))
         {
@@ -54,29 +54,20 @@ public partial class SyncSettingsViewModel : ObservableObject
         }
     }
 
-    public void Refresh()
-    {
-        IsDiscoveryRunning = _client.IsDiscoveryRunning;
-        _client.PruneStale();
-    }
-
-    [RelayCommand]
-    private void StartDiscovery()
+    public void StartDiscovery()
     {
         _client.StartDiscovery();
         Refresh();
         _logger.LogInformation("[NtpServer.Sync] 启动设备发现");
     }
 
-    [RelayCommand]
-    private void StopDiscovery()
+    public void StopDiscovery()
     {
         _client.StopDiscovery();
         Refresh();
     }
 
-    [RelayCommand]
-    private async Task SyncNowAsync()
+    public async Task SyncNowAsync()
     {
         LastError = null;
         var (ip, port, source) = _client.ResolveDevice(

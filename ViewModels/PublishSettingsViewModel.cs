@@ -51,16 +51,14 @@ public partial class PublishSettingsViewModel : ObservableObject
         else StatusText = "时间发布服务未运行";
     }
 
-    [RelayCommand]
-    private void Start()
+    public void Start()
     {
         _service.Start();
         Refresh();
         _logger.LogInformation("[NtpServer.Publish] 用户点击了「开始发布」");
     }
 
-    [RelayCommand]
-    private void Stop()
+    public void Stop()
     {
         _service.Stop();
         Refresh();

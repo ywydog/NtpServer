@@ -16,7 +16,7 @@ public static class SystemClockHelper
     public static bool ApplySoftOffset(ref double offsetSeconds, double deltaSeconds, double? maxSeconds = null)
     {
         if (Math.Abs(deltaSeconds) < 0.001) return true;
-        if (maxSeconds.HasValue && Math.Abs(offsetSeconds + deltaSeconds) > maxSeconds.Value.Value)
+        if (maxSeconds.HasValue && Math.Abs(offsetSeconds + deltaSeconds) > maxSeconds.Value)
         {
             return false;
         }

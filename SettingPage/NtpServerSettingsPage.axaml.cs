@@ -32,9 +32,8 @@ public partial class NtpServerSettingsPage : SettingsPageBase
         InitializeComponent();
 
         // 定时刷新状态
-        _refreshTimer = new DispatcherTimer { Interval = DispatcherPriority.Default };
+        _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _refreshTimer.Tick += (_, _) => ViewModel.RefreshStatus();
-        _refreshTimer.Interval = TimeSpan.FromSeconds(2);
         _refreshTimer.Start();
 
         _logger?.LogInformation("[NtpServer] 设置页面已加载");
