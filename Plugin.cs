@@ -1,5 +1,6 @@
 using ClassIsland.Core;
 using ClassIsland.Core.Abstractions;
+using ClassIsland.Core.Abstractions.Services;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Extensions.Registry;
 using ClassIsland.Shared;
@@ -8,92 +9,156 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NtpServer.Models;
 using NtpServer.Services;
+using NtpServer.ViewModels;
+using System.ComponentModel;
 
 namespace NtpServer;
 
+/// <summary>插件入口。</summary>
 [PluginEntrance]
 public class Plugin : PluginBase
 {
+    /// <summary>把 ClassIsland 自带的 IExactTimeService 适配到我们的 IExactTimeServiceProvider。</summary>
+    private class CiExactTimeProvider : IExactTimeServiceProvider
+    {
+        private readonly IExactTimeService _ci;
+        public CiExactTimeProvider(IExactTimeService ci) { _ci = ci; }
+        public DateTime GetCurrentLocalDateTime() => _ci.GetCurrentLocalDateTime();
+    }
+
     public override void Initialize(HostBuilderContext context, IServiceCollection services)
     {
-        var loggerFactory = services.BuildServiceProvider().GetService<ILoggerFactory>();
-        var logger = loggerFactory?.CreateLogger<Plugin>();
+        // 1) 设置根（所有页共用）
+        services.AddSingleton<NtpServerSettingsStore>();
+        services.AddSingleton<NtpServerSettingsRoot>(sp =>
+            sp.GetRequiredService<NtpServerSettingsStore>().Load());
+        services.AddSingleton<NtpServerSettings>(sp => sp.GetRequiredService<NtpServerSettingsRoot>().NtpServer);
+        services.AddSingleton<PublishSettings>(sp => sp.GetRequiredService<NtpServerSettingsRoot>().Publish);
+        services.AddSingleton<SyncSettings>(sp => sp.GetRequiredService<NtpServerSettingsRoot>().Sync);
 
-        logger?.LogInformation("[NtpServer] 插件正在初始化...");
-
-        // 加载设置
-        var settings = LoadSettings(logger);
-
-        // 注册设置页面
-        services.AddSettingsPage<NtpServerSettingsPage>();
-        logger?.LogInformation("[NtpServer] 已注册设置页面");
-
-        // 注册 NTP 服务为单例
-        services.AddSingleton<NtpServerService>(sp =>
+        // 自动保存：监听三个设置对象的 PropertyChanged，1 秒去抖后写盘
+        services.AddHostedService(sp =>
         {
-            var serviceLogger = sp.GetRequiredService<ILogger<NtpServerService>>();
-            return new NtpServerService(serviceLogger, settings);
-        });
-        logger?.LogInformation("[NtpServer] 已注册 NTP 服务");
-
-        // 订阅应用启动事件，自动启动 NTP 服务
-        AppBase.Current.AppStarted += (s, e) =>
-        {
-            logger?.LogInformation("[NtpServer] 应用已启动，正在启动 NTP 服务...");
-            try
+            var store = sp.GetRequiredService<NtpServerSettingsStore>();
+            var root = sp.GetRequiredService<NtpServerSettingsRoot>();
+            var saverLogger = sp.GetRequiredService<ILogger<Plugin>>();
+            var pending = new System.Collections.Generic.HashSet<INotifyPropertyChanged>();
+            var timer = new System.Timers.Timer(1000) { AutoReset = false };
+            timer.Elapsed += (_, _) =>
             {
-                var ntpService = IAppHost.GetService<NtpServerService>();
-                ntpService.Start();
-                logger?.LogInformation("[NtpServer] NTP 服务自动启动完成");
-            }
-            catch (Exception ex)
+                try { store.Save(root); pending.Clear(); }
+                catch (Exception ex) { saverLogger.LogError(ex, "[NtpServer] 自动保存设置失败"); }
+            };
+            void Hook(INotifyPropertyChanged s)
             {
-                logger?.LogError(ex, "[NtpServer] 自动启动 NTP 服务失败: {Message}", ex.Message);
-            }
-        };
-
-        // 订阅应用停止事件，停止 NTP 服务
-        AppBase.Current.AppStopping += (s, e) =>
-        {
-            logger?.LogInformation("[NtpServer] 应用正在停止，正在停止 NTP 服务...");
-            try
-            {
-                var ntpService = IAppHost.TryGetService<NtpServerService>();
-                ntpService?.Stop();
-                logger?.LogInformation("[NtpServer] NTP 服务已停止");
-            }
-            catch (Exception ex)
-            {
-                logger?.LogWarning(ex, "[NtpServer] 停止 NTP 服务时发生异常: {Message}", ex.Message);
-            }
-        };
-
-        logger?.LogInformation("[NtpServer] 插件初始化完成");
-    }
-
-    private static NtpServerSettings LoadSettings(ILogger? logger)
-    {
-        try
-        {
-            var pluginDir = Path.Combine(AppContext.BaseDirectory, "Plugins", "NtpServer");
-            var configPath = Path.Combine(pluginDir, "NtpServerSettings.json");
-            if (File.Exists(configPath))
-            {
-                var json = File.ReadAllText(configPath);
-                var settings = System.Text.Json.JsonSerializer.Deserialize<NtpServerSettings>(json);
-                if (settings != null)
+                s.PropertyChanged += (_, _) =>
                 {
-                    logger?.LogInformation("[NtpServer] 已从 {Path} 加载设置", configPath);
-                    return settings;
-                }
+                    pending.Add(s);
+                    timer.Stop(); timer.Start();
+                };
             }
-        }
-        catch (Exception ex)
-        {
-            logger?.LogWarning(ex, "[NtpServer] 加载设置失败，使用默认设置: {Message}", ex.Message);
-        }
+            Hook(root.NtpServer); Hook(root.Publish); Hook(root.Sync);
+            return new NoopHostedService(() => { timer.Stop(); pending.Clear(); });
+        });
 
-        logger?.LogInformation("[NtpServer] 使用默认设置");
-        return new NtpServerSettings();
+        // 2) IExactTimeService 桥接
+        services.AddSingleton<IExactTimeServiceProvider>(sp =>
+            new CiExactTimeProvider(sp.GetRequiredService<IExactTimeService>()));
+
+        // 3) NTP 标准端口服务端（123 端口，原有功能保留）
+        services.AddSingleton<NtpServerService>(sp =>
+            new NtpServerService(
+                sp.GetRequiredService<ILogger<NtpServerService>>(),
+                sp.GetRequiredService<NtpServerSettings>()));
+
+        // 4) 同步/发布的发现 + HTTP
+        services.AddSingleton<TimePublishService>(sp =>
+            new TimePublishService(
+                sp.GetRequiredService<ILogger<TimePublishService>>(),
+                sp.GetRequiredService<IExactTimeServiceProvider>(),
+                () => sp.GetRequiredService<PublishSettings>()));
+        services.AddSingleton<TimeSyncClient>(sp =>
+            new TimeSyncClient(
+                sp.GetRequiredService<ILogger<TimeSyncClient>>(),
+                sp.GetRequiredService<IExactTimeServiceProvider>(),
+                () => sp.GetRequiredService<SyncSettings>()));
+
+        // 5) ViewModel
+        services.AddSingleton<ViewModels.NtpServerSettingsViewModel>(sp =>
+            new ViewModels.NtpServerSettingsViewModel(
+                sp.GetRequiredService<NtpServerSettings>(),
+                sp.GetRequiredService<NtpServerService>()));
+        services.AddSingleton<PublishSettingsViewModel>(sp =>
+            new PublishSettingsViewModel(
+                sp.GetRequiredService<PublishSettings>(),
+                sp.GetRequiredService<TimePublishService>(),
+                sp.GetRequiredService<IExactTimeServiceProvider>(),
+                sp.GetRequiredService<ILogger<PublishSettingsViewModel>>()));
+        services.AddSingleton<SyncSettingsViewModel>(sp =>
+            new SyncSettingsViewModel(
+                sp.GetRequiredService<SyncSettings>(),
+                sp.GetRequiredService<TimeSyncClient>(),
+                sp.GetRequiredService<IExactTimeServiceProvider>(),
+                () => sp.GetRequiredService<IExactTimeService>(),
+                sp.GetRequiredService<ILogger<SyncSettingsViewModel>>()));
+
+        // 6) 三个设置页
+        services.AddSettingsPage<NtpServerSettingsPage>();
+        services.AddSettingsPage<PublishSettingsPage>();
+        services.AddSettingsPage<SyncSettingsPage>();
+
+        // 7) 生命周期
+        AppBase.Current.AppStarted += (_, _) =>
+        {
+            var logger = IAppHost.TryGetService<ILogger<Plugin>>();
+            try
+            {
+                IAppHost.GetService<NtpServerService>().Start();
+                var publish = IAppHost.TryGetService<TimePublishService>();
+                var publishSettings = IAppHost.TryGetService<PublishSettings>();
+                if (publish != null && publishSettings?.AutoStart == true) publish.Start();
+                var sync = IAppHost.TryGetService<TimeSyncClient>();
+                sync?.StartDiscovery();
+                logger?.LogInformation("[NtpServer] 应用已启动，NTP 与发布服务自启完成");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "[NtpServer] 自启失败: {Message}", ex.Message);
+            }
+        };
+
+        AppBase.Current.AppStopping += (_, _) =>
+        {
+            var logger = IAppHost.TryGetService<ILogger<Plugin>>();
+            try
+            {
+                IAppHost.TryGetService<TimeSyncClient>()?.StopDiscovery();
+                IAppHost.TryGetService<TimePublishService>()?.Stop();
+                IAppHost.TryGetService<NtpServerService>()?.Stop();
+                IAppHost.TryGetService<TimeSyncClient>()?.Dispose();
+                IAppHost.TryGetService<TimePublishService>()?.Dispose();
+                IAppHost.TryGetService<NtpServerService>()?.Dispose();
+
+                // 持久化设置
+                var store = IAppHost.TryGetService<NtpServerSettingsStore>();
+                var root = IAppHost.TryGetService<NtpServerSettingsRoot>();
+                if (store != null && root != null) store.Save(root);
+
+                logger?.LogInformation("[NtpServer] 应用正在停止，所有服务已停止并保存设置");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "[NtpServer] 停止时发生异常: {Message}", ex.Message);
+            }
+        };
     }
+}
+
+/// <summary>什么都不做，只是把 Action 包成 IHostedService 用于作用域内的资源释放。</summary>
+internal class NoopHostedService : IHostedService
+{
+    private readonly Action _onStop;
+    public NoopHostedService(Action onStop) { _onStop = onStop; }
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StopAsync(CancellationToken cancellationToken) { _onStop(); return Task.CompletedTask; }
 }

@@ -18,6 +18,7 @@ public partial class NtpServerSettings : ObservableObject
     private NtpTimeSource _timeSource = NtpTimeSource.SystemTime;
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum NtpTimeSource
 {
     SystemTime,

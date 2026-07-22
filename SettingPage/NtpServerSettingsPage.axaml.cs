@@ -1,8 +1,3 @@
-using System;
-using System.Diagnostics;
-using System.IO;
-using System.Text.Json;
-using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
@@ -10,14 +5,14 @@ using ClassIsland.Core;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Helpers.UI;
-using ClassIsland.Shared;
 using Microsoft.Extensions.Logging;
-using NtpServer.Models;
-using NtpServer.Services;
 using NtpServer.ViewModels;
 
 namespace NtpServer;
 
+/// <summary>
+/// NTP 服务端设置页。全部状态通过 DI 注入的 <see cref="NtpServerSettingsViewModel"/> 暴露。
+/// </summary>
 [SettingsPageInfo("classisland.ntpServer", "NTP 时间同步服务端", "\ue770", "\ue771")]
 public partial class NtpServerSettingsPage : SettingsPageBase
 {
@@ -26,23 +21,15 @@ public partial class NtpServerSettingsPage : SettingsPageBase
 
     public NtpServerSettingsViewModel ViewModel { get; }
 
-    public NtpServerSettingsPage()
+    public NtpServerSettingsPage(
+        NtpServerSettingsViewModel viewModel,
+        ILogger<NtpServerSettingsPage>? logger = null)
     {
-        var settings = LoadSettings();
-        var service = IAppHost.TryGetService<NtpServerService>();
+        ViewModel = viewModel;
+        _logger = logger;
 
-        if (service == null)
-        {
-            // 服务尚未注册，创建临时实例（仅在设计时）
-            var logger = IAppHost.TryGetService<ILogger<NtpServerService>>();
-            service = new NtpServerService(logger!, settings);
-        }
-
-        ViewModel = new NtpServerSettingsViewModel(settings, service);
         DataContext = this;
         InitializeComponent();
-
-        _logger = IAppHost.TryGetService<ILogger<NtpServerSettingsPage>>();
 
         // 定时刷新状态
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -52,61 +39,39 @@ public partial class NtpServerSettingsPage : SettingsPageBase
         _logger?.LogInformation("[NtpServer] 设置页面已加载");
     }
 
-    private static NtpServerSettings LoadSettings()
+    protected override void OnUnloaded(RoutedEventArgs e)
     {
-        try
-        {
-            var configPath = Path.Combine(AppContext.BaseDirectory, "Plugins", "NtpServer", "NtpServerSettings.json");
-            if (File.Exists(configPath))
-            {
-                var json = File.ReadAllText(configPath);
-                var settings = JsonSerializer.Deserialize<NtpServerSettings>(json);
-                if (settings != null) return settings;
-            }
-        }
-        catch (Exception)
-        {
-            // 忽略加载错误，使用默认设置
-        }
-        return new NtpServerSettings();
-    }
-
-    private void SaveSettings()
-    {
-        try
-        {
-            var pluginDir = Path.Combine(AppContext.BaseDirectory, "Plugins", "NtpServer");
-            Directory.CreateDirectory(pluginDir);
-            var configPath = Path.Combine(pluginDir, "NtpServerSettings.json");
-            var json = JsonSerializer.Serialize(ViewModel.Settings, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(configPath, json);
-            _logger?.LogInformation("[NtpServer] 设置已保存到 {Path}", configPath);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "[NtpServer] 保存设置失败: {Message}", ex.Message);
-            this.ShowErrorToast("保存设置失败", ex);
-        }
+        base.OnUnloaded(e);
+        _refreshTimer.Stop();
     }
 
     private void ButtonRestartAsAdmin_OnClick(object? sender, RoutedEventArgs e)
     {
         try
         {
-            var processStartInfo = new ProcessStartInfo()
+            // 主程序 .exe 路径（自包含发布时 ProcessPath 就是 .exe；dotnet 启动时为 dotnet.exe，需要回退到 argv[0]）
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe) || exe.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             {
-                FileName = Environment.ProcessPath?.Replace(".dll", ".exe"),
-                ArgumentList = { "-m", "--uri", "classisland://app/settings/classisland.ntpServer" },
+                var argv0 = Environment.GetCommandLineArgs();
+                exe = argv0.Length > 0 ? argv0[0] : exe;
+            }
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exe,
                 Verb = "runas",
                 UseShellExecute = true
             };
-            var args = Environment.GetCommandLineArgs().ToList();
-            args.RemoveAt(0);
-            foreach (var arg in args)
+            // 透传当前主进程参数
+            var args = Environment.GetCommandLineArgs();
+            for (var i = 1; i < args.Length; i++)
             {
-                processStartInfo.ArgumentList.Add(arg);
+                psi.ArgumentList.Add(args[i]);
             }
-            Process.Start(processStartInfo);
+
+            System.Diagnostics.Process.Start(psi);
+            // 等待管理员进程起来再退出，避免主进程先死导致深链打不开
             AppBase.Current.Stop();
         }
         catch (Exception ex)
@@ -118,8 +83,9 @@ public partial class NtpServerSettingsPage : SettingsPageBase
 
     private void ButtonRestartService_OnClick(object? sender, RoutedEventArgs e)
     {
-        SaveSettings();
+        // 设置会在 PropertyChanged 后由 Plugin 注册的自动保存服务写盘
         ViewModel.Service.Restart();
+        ViewModel.AcknowledgePortChange();
         ViewModel.RefreshStatus();
         this.ShowSuccessToast("NTP 服务已重启");
         _logger?.LogInformation("[NtpServer] 用户手动重启了 NTP 服务，端口: {Port}", ViewModel.Settings.Port);
@@ -135,29 +101,44 @@ public partial class NtpServerSettingsPage : SettingsPageBase
 
     private async void ButtonCopyAddress_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button button && button.Tag is string address)
+        if (sender is not Button button) return;
+        if (button.CommandParameter is not string address || string.IsNullOrEmpty(address)) return;
+        try
         {
-            var fullAddress = $"{address}:{ViewModel.Settings.Port}";
-            try
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard != null)
             {
-                var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
-                if (clipboard != null)
-                {
-                    await clipboard.SetTextAsync(fullAddress);
-                    this.ShowSuccessToast($"已复制: {fullAddress}");
-                    _logger?.LogDebug("[NtpServer] 用户复制了地址: {Address}", fullAddress);
-                }
+                await clipboard.SetTextAsync(address);
+                this.ShowSuccessToast($"已复制: {address}");
+                _logger?.LogDebug("[NtpServer] 用户复制了地址: {Address}", address);
             }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "[NtpServer] 复制到剪贴板失败: {Message}", ex.Message);
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "[NtpServer] 复制到剪贴板失败: {Message}", ex.Message);
+            this.ShowErrorToast("复制到剪贴板失败", ex);
         }
     }
 
-    protected override void OnUnloaded(RoutedEventArgs e)
+    private async void ButtonCopyPrimaryAddress_OnClick(object? sender, RoutedEventArgs e)
     {
-        base.OnUnloaded(e);
-        _refreshTimer.Stop();
+        if (sender is not Button button) return;
+        if (button.CommandParameter is not string address || string.IsNullOrEmpty(address)) return;
+        // 复用通用复制逻辑
+        try
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard != null)
+            {
+                await clipboard.SetTextAsync(address);
+                this.ShowSuccessToast($"已复制推荐地址: {address}");
+                _logger?.LogDebug("[NtpServer] 用户复制了推荐地址: {Address}", address);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "[NtpServer] 复制到剪贴板失败: {Message}", ex.Message);
+            this.ShowErrorToast("复制到剪贴板失败", ex);
+        }
     }
 }

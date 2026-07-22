@@ -1,6 +1,6 @@
 id: NtpServer
 name: NtpServer
-description: 在本classisland启动NTP服务端，为局域网设备提供时间同步服务
+description: 在本 ClassIsland 启动时间发布服务，让其他 ClassIsland 端通过「设备名」自动发现并同步时间。同时提供标准 NTP 123 端口供 ClassIsland 自带「精确时间」功能使用。
 entranceAssembly: "NtpServer.dll"
 url: https://github.com/ywydog/NtpServer
 version: 1.0.0.0
