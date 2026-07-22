@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using NtpServer.Helpers;
 using NtpServer.Models;
 
 namespace NtpServer.Services;
@@ -52,7 +53,9 @@ public class TimePublishService : IDisposable
         }
     }
 
-    public long RequestCount { get; private set; }
+    private long _requestCount;
+
+    public long RequestCount => Interlocked.Read(ref _requestCount);
 
     public string? LastError { get; private set; }
 
