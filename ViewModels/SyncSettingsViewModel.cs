@@ -118,8 +118,11 @@ public partial class SyncSettingsViewModel : ObservableObject
             case TimeApplyMode.Soft:
                 try
                 {
+                    // ClassIsland 公开的 IExactTimeService 没有 offset 字段；
+                    // 软调整即触发 ci.Sync() 立即让 ClassIsland 用其内置 NTP 客户端（要求用户在
+                    // ClassIsland 时间设置中启用 NTP 校时并指向本插件的 NTP 服务）重做一次同步。
                     var ci = _ciTimeServiceAccessor();
-                    ci.TimeOffsetSeconds += deltaSeconds;
+                    ci.Sync();
                     return true;
                 }
                 catch (Exception ex)
@@ -139,9 +142,8 @@ public partial class SyncSettingsViewModel : ObservableObject
                     var target = _timeProvider.GetCurrentLocalDateTime().AddSeconds(deltaSeconds);
                     if (SystemClockHelper.ApplyHardTime(target, out var err))
                     {
-                        // 系统时间被改了，把 ClassIsland 偏移归零
-                        var ci = _ciTimeServiceAccessor();
-                        ci.TimeOffsetSeconds = 0;
+                        // 系统时间被改了，再让 ClassIsland 用其 NTP 源重做一次确认。
+                        try { _ciTimeServiceAccessor().Sync(); } catch { /* 非关键 */ }
                         return true;
                     }
                     LastError = "硬调整失败：" + err;
